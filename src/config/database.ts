@@ -1,16 +1,14 @@
-import { Pool } from "pg";
-import dotenv from "dotenv";
-dotenv.config();
+import { Pool } from 'pg'
+import dotenv from "dotenv"
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+dotenv.config()
+
+const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database : process.env.DB_DATA,
+    password : process.env.PASSWORD,
+    port: parseInt(process.env.PORT || "5432"),
 });
+export const query = (text: string ,params?: any[]) => pool.query(text,params)
 
-export const testDbConnection = async () => {
-  try {
-    const res = await pool.query("SELECT NOW()");
-    console.log("DB Connected:", res.rows[0]);
-  } catch (error) {
-    console.error("DB Connection Error", error);
-  }
-};
