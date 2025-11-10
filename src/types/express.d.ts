@@ -1,16 +1,10 @@
 
 import { User } from "./user.types";
 
-interface AuthUser extends User {
-    role: string;
-}
-
 declare global {
-    namespace Express {
-        export interface Request {
-            user?: AuthUser;
-        }
+  namespace Express {
+    export interface Request {
+      user?: User;
     }
+  }
 }
-
-export {};

@@ -1,9 +1,10 @@
-import { Router } from "express";
-import { register, login } from "../controllers/authControllers";
+import { register, login, getProfile, updateProfile } from "../controllers/authControllers";
+import { protect } from "../middleware/authMiddleware";
+import router from "./profileRoutes";
 
-const router = Router();
+export { router as authRoutes };
 
 router.post("/register", register);
 router.post("/login", login);
-
-export default router;
+router.get("/profile", protect, getProfile);
+router.put("/profile", protect, updateProfile);

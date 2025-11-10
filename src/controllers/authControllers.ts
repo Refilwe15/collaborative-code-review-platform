@@ -1,30 +1,36 @@
 import { Request, Response } from "express";
-import jwt from "jsonwebtoken";
+import * as userService from "../service/userService";
 import bcrypt from "bcryptjs";
-import { createUser, findUserByEmail } from "../models/userModel";
+import jwt from "jsonwebtoken";
 
-const generateToken = (id: number, role: string) => {
-    return jwt.sign({ id, role }, process.env.JWT_SECRET!, { expiresIn: "7d" });
-};
 
 export const register = async (req: Request, res: Response) => {
-    const { email, password, name, role, display_picture } = req.body;
+    const { email, password, name } = req.body;
 
-    if (!email || !password || !name) {
-        return res.status(400).json({ message: "All fields are required" });
+    if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const userExists = await findUserByEmail(email);
-    if (userExists) {
-        return res.status(400).json({ message: "User already exists" });
+    try {
+        const existingUser = await userService.findUserByEmail(email);
+        if (existingUser) {
+            return res.status(409).json({ message: "Email is already in use" });
+        }
+
+        const user = await userService.createUser(email, password, name);
+
+        return res.status(201).json({
+            message: "User registered successfully",
+            userId: user.id
+        });
+
+    } catch (error) {
+        console.error("Register Error:", error);
+        return res.status(500).json({ message: "Error registering the user" });
     }
-
-    const user = await createUser(email, password, name, role, display_picture);
-    const token = generateToken(user.id, user.role);
-
-    res.status(201).json({ user, token });
 };
 
+// ✅ LOGIN
 export const login = async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
@@ -32,16 +38,79 @@ export const login = async (req: Request, res: Response) => {
         return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const user = await findUserByEmail(email);
-    if (!user) {
-        return res.status(400).json({ message: "Invalid credentials" });
+    try {
+        const user = await userService.findUserByEmail(email);
+
+        if (!user) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) {
+            return res.status(401).json({ message: "Invalid password" });
+        }
+
+        const payload = {
+            userId: user.id,
+            email: user.email
+        };
+
+        const token = jwt.sign(payload, process.env.JWT_SECRET!, {
+            expiresIn: "1h",
+        });
+
+        return res.status(200).json({
+            message: "Login successful",
+            token,
+        });
+
+    } catch (error) {
+        console.error("Login Error:", error);
+        return res.status(500).json({ message: "Error logging in" });
+    }
+};
+
+// ✅ GET PROFILE
+export const getProfile = async (req: Request, res: Response) => {
+    if (!req.user) {
+        return res.status(401).json({ message: "Not authorized" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) {
-        return res.status(400).json({ message: "Invalid credentials" });
+    const { password_hash, ...safeUser } = req.user;
+    return res.status(200).json({ user: safeUser });
+};
+
+//  UPDATE PROFILE (name + email)
+export const updateProfile = async (req: Request, res: Response) => {
+    if (!req.user) {
+        return res.status(401).json({ message: "Not authorized" });
     }
 
-    const token = generateToken(user.id, user.role);
-    res.json({ user, token });
+    const { name, email } = req.body;
+
+    try {
+        // Ensure email is unique if being changed
+        if (email && email !== req.user.email) {
+            const existingUser = await userService.findUserByEmail(email);
+            if (existingUser && existingUser.id !== req.user.id) {
+                return res.status(409).json({ message: "Email is already in use" });
+            }
+        }
+
+        const updatedUser = await userService.updateUser(req.user.id, { name, email });
+
+        if (!updatedUser) {
+            return res.status(500).json({ message: "Failed to update profile" });
+        }
+
+        const { password_hash, ...safeUser } = updatedUser;
+        return res.status(200).json({
+            message: "Profile updated",
+            user: safeUser
+        });
+
+    } catch (error) {
+        console.error("Profile Update Error:", error);
+        return res.status(500).json({ message: "Error updating profile" });
+    }
 };
